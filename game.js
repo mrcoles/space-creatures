@@ -88,7 +88,7 @@ const NUM_ALIEN_COLS = 11;
 const NUM_ALIEN_ROWS = 5;
 
 // this determines how often they move move when the game steps
-const ALIEN_STEP_DELAY = 30;
+const ALIEN_STEP_DELAY = 46;
 
 const DIR_RIGHT = 1;
 const DIR_LEFT = -1;
