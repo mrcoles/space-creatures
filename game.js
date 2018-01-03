@@ -51,13 +51,11 @@
 //     *   current buners and their state
 //     *   defender and its location
 
-
 const assert = (cond, msg) => {
   if (!cond) {
     throw new Error(msg || 'assertion error ${cond}');
   }
-}
-
+};
 
 // Game Backend
 // ------------
@@ -72,7 +70,6 @@ const assert = (cond, msg) => {
 const NUM_COLS = 13;
 const NUM_ROWS = 10;
 
-
 // Grid constants - this is the larger grid that columns and rows sit on top of
 
 const COL_WIDTH = 8;
@@ -80,7 +77,6 @@ const ROW_HEIGHT = 2;
 
 const GRID_WIDTH = COL_WIDTH * NUM_COLS;
 const GRID_HEIGHT = ROW_HEIGHT * NUM_ROWS;
-
 
 // Alien constants
 
@@ -93,7 +89,6 @@ const ALIEN_STEP_DELAY = 46;
 const DIR_RIGHT = 1;
 const DIR_LEFT = -1;
 const DIR_DOWN = 1;
-
 
 // ### Game
 
@@ -122,7 +117,9 @@ class Game {
     let alien_row = 0;
     for (let row_index = start_row; row_index < end_row; row_index++) {
       for (let col_index = start_col; col_index < end_col; col_index++) {
-        aliens.push(new Alien(alien_row, col_index * COL_WIDTH, row_index * ROW_HEIGHT));
+        aliens.push(
+          new Alien(alien_row, col_index * COL_WIDTH, row_index * ROW_HEIGHT)
+        );
       }
       alien_row++;
     }
@@ -163,14 +160,15 @@ class Game {
     let dx = state.xdir;
     let dy = state.ydir;
 
-    this.state.aliens = this.state.aliens.filter(alien => !alien.dead);
+    this.state.aliens = this.state.aliens.filter((alien) => !alien.dead);
 
-    state.aliens.forEach(alien => {
+    state.aliens.forEach((alien) => {
       alien.update(dx, dy);
 
-      let alien_hit_wall = (state.xdir === DIR_RIGHT ?
-                            alien.grid_x + COL_WIDTH === GRID_WIDTH :
-                            alien.grid_x === 0);
+      let alien_hit_wall =
+        state.xdir === DIR_RIGHT
+          ? alien.grid_x + COL_WIDTH === GRID_WIDTH
+          : alien.grid_x === 0;
       if (alien_hit_wall) {
         hit_wall = true;
       }
@@ -182,7 +180,7 @@ class Game {
     });
 
     if (hit_wall) {
-      state.xdir = (state.xdir === DIR_RIGHT ? DIR_LEFT : DIR_RIGHT);
+      state.xdir = state.xdir === DIR_RIGHT ? DIR_LEFT : DIR_RIGHT;
       state.ydir = DIR_DOWN;
     } else {
       state.ydir = 0;
@@ -203,17 +201,16 @@ class Game {
 
     let state = this.state;
 
-    state.aliens.forEach(alien => {
+    state.aliens.forEach((alien) => {
       for (let k = alien.grid_x + 1; k < alien.grid_x + COL_WIDTH - 1; k++) {
         grid[alien.grid_y][k] = 'X';
       }
     });
 
-    let viz = grid.map(row => `|${row.join('')}|`).join('\n');
+    let viz = grid.map((row) => `|${row.join('')}|`).join('\n');
     console.log(`step: ${state.step_count}\n${viz}`);
   }
 }
-
 
 // ### Defender
 
@@ -238,7 +235,6 @@ class Defender {
   }
 }
 
-
 // ### Alien Types
 
 const ALIEN_0 = Symbol('alien 0');
@@ -250,13 +246,12 @@ const ALIEN_TYPES = {
     narrow_by: 1
   },
   [ALIEN_1]: {
-    narrow_by: .5
+    narrow_by: 0.5
   },
   [ALIEN_2]: {
     narrow_by: 0
   }
-}
-
+};
 
 // ### Alien class
 
@@ -266,10 +261,12 @@ class Alien {
     this.grid_x = grid_x;
     this.grid_y = grid_y;
 
-    this.type = (alien_row === 0 ? ALIEN_0 :
-                 alien_row <= 2 ? ALIEN_1 : ALIEN_2);
+    this.type = alien_row === 0 ? ALIEN_0 : alien_row <= 2 ? ALIEN_1 : ALIEN_2;
     this.cfg = ALIEN_TYPES[this.type];
-    assert(this.cfg !== undefined, 'unabled to find alien type for ${this.type.toString()}');
+    assert(
+      this.cfg !== undefined,
+      'unabled to find alien type for ${this.type.toString()}'
+    );
 
     this.box_width = 5.5 - this.cfg.narrow_by;
     this.box_height = 1.1;
@@ -286,7 +283,6 @@ class Alien {
     this.expression = !this.expression;
   }
 }
-
 
 // UI
 // --
@@ -344,7 +340,6 @@ const UI_STATES = {
   exploding: Symbol('exploding'),
   gameover: Symbol('gameover')
 };
-
 
 // ### UI Class
 //
@@ -507,15 +502,16 @@ class UI {
       defender.box_height
     );
 
-    let mid = {x: x + width / 2, y: y + height / 2};
+    let mid = { x: x + width / 2, y: y + height / 2 };
     let path = [];
 
-    const rand_color = () => ALIEN_COLORS[parseInt(Math.random() * ALIEN_COLORS.length)];
+    const rand_color = () =>
+      ALIEN_COLORS[parseInt(Math.random() * ALIEN_COLORS.length)];
     const rand = () => parseInt(Math.random() * 30) - 15;
 
     for (let i = 0; i < 10; i++) {
       ctx.strokeStyle = rand_color();
-      Draw.shape(ctx, [mid, {x: mid.x + rand(), y: mid.y + rand()}]).stroke();
+      Draw.shape(ctx, [mid, { x: mid.x + rand(), y: mid.y + rand() }]).stroke();
     }
 
     this._defender_counter--;
@@ -620,10 +616,10 @@ class UI {
     let color_steps = GRID_HEIGHT / ALIEN_COLORS.length;
     let fill = ALIEN_COLORS[parseInt(alien.grid_y / color_steps)];
 
-    let sw = {x: x, y: y + height};
-    let nw = {x: x + width / 6, y: y};
-    let ne = {x: x + width * 5 / 6, y: y};
-    let se = {x: x + width, y: y + height};
+    let sw = { x: x, y: y + height };
+    let nw = { x: x + width / 6, y: y };
+    let ne = { x: x + width * 5 / 6, y: y };
+    let se = { x: x + width, y: y + height };
 
     ctx.fillStyle = fill;
     Draw.shape(ctx, [sw, nw, ne, se]).fill();
@@ -632,10 +628,14 @@ class UI {
       case ALIEN_0:
         ctx.strokeStyle = fill;
         let outside_y = ne.y + (alien.expression ? 3 : 7);
-        Draw.shape(ctx, [{x: ne.x, y: ne.y + 5},
-                         {x: ne.x + 5, y: outside_y}]).stroke();
-        Draw.shape(ctx, [{x: nw.x, y: nw.y + 5},
-                         {x: nw.x - 5, y: outside_y}]).stroke();
+        Draw.shape(ctx, [
+          { x: ne.x, y: ne.y + 5 },
+          { x: ne.x + 5, y: outside_y }
+        ]).stroke();
+        Draw.shape(ctx, [
+          { x: nw.x, y: nw.y + 5 },
+          { x: nw.x - 5, y: outside_y }
+        ]).stroke();
         break;
       case ALIEN_1:
         let y_adj = alien.expression ? 1 : 0;
@@ -647,20 +647,28 @@ class UI {
         break;
       case ALIEN_2:
         let x_adj = alien.expression ? 2 : 0;
-        Draw.shape(ctx, [{x: nw.x, y: nw.y},
-                         {x: nw.x + 3 - x_adj, y: nw.y - 4},
-                         {x: nw.x + 6, y: nw.y}]).fill();
-        Draw.shape(ctx, [{x: ne.x, y: ne.y},
-                         {x: ne.x - 3 + x_adj, y: ne.y - 4},
-                         {x: ne.x - 6, y: ne.y}]).fill();
+        Draw.shape(ctx, [
+          { x: nw.x, y: nw.y },
+          { x: nw.x + 3 - x_adj, y: nw.y - 4 },
+          { x: nw.x + 6, y: nw.y }
+        ]).fill();
+        Draw.shape(ctx, [
+          { x: ne.x, y: ne.y },
+          { x: ne.x - 3 + x_adj, y: ne.y - 4 },
+          { x: ne.x - 6, y: ne.y }
+        ]).fill();
         ctx.fillStyle = '#000';
-        x_adj *= .5;
-        Draw.shape(ctx, [{x: nw.x + 2, y: nw.y + 1},
-                         {x: nw.x + 3 - x_adj, y: nw.y - 2},
-                         {x: nw.x + 4, y: nw.y + 1}]).fill();
-        Draw.shape(ctx, [{x: ne.x - 2, y: ne.y + 1},
-                         {x: ne.x - 3 + x_adj, y: ne.y - 2},
-                         {x: ne.x - 4, y: ne.y + 1}]).fill();
+        x_adj *= 0.5;
+        Draw.shape(ctx, [
+          { x: nw.x + 2, y: nw.y + 1 },
+          { x: nw.x + 3 - x_adj, y: nw.y - 2 },
+          { x: nw.x + 4, y: nw.y + 1 }
+        ]).fill();
+        Draw.shape(ctx, [
+          { x: ne.x - 2, y: ne.y + 1 },
+          { x: ne.x - 3 + x_adj, y: ne.y - 2 },
+          { x: ne.x - 4, y: ne.y + 1 }
+        ]).fill();
         break;
     }
 
@@ -686,13 +694,18 @@ class UI {
     // the eyes
     Draw.circle(ctx, x + width * 2 / 6, y + height * 4 / 6, 1).fill();
     Draw.circle(ctx, x + width - width * 2 / 6, y + height * 4 / 6, 1).fill();
-    
+
     if (alien.expression) {
       // the mouth
-      Draw.circle(ctx,
-                  x + width * 3 / 8,
-                  y + height * 5 / 6,
-                  3, Math.PI, 2 * Math.PI, true).fill();
+      Draw.circle(
+        ctx,
+        x + width * 3 / 8,
+        y + height * 5 / 6,
+        3,
+        Math.PI,
+        2 * Math.PI,
+        true
+      ).fill();
     }
   }
 
@@ -706,10 +719,9 @@ class UI {
       y: y === undefined ? y : C_GRID_Y_START + y * C_HEIGHT_FACTOR,
       width: width === undefined ? width : width * C_WIDTH_FACTOR,
       height: height === undefined ? height : height * C_HEIGHT_FACTOR
-    }
+    };
   }
 }
-
 
 // ### Draw
 //
@@ -725,10 +737,14 @@ const Draw = {
   },
   circle: (ctx, x, y, radius, start, end, counterclockwise) => {
     ctx.beginPath();
-    ctx.arc(x, y, radius,
-            start === undefined ? 0 : start,
-            end === undefined ? 2 * Math.PI : end,
-            counterclockwise);
+    ctx.arc(
+      x,
+      y,
+      radius,
+      start === undefined ? 0 : start,
+      end === undefined ? 2 * Math.PI : end,
+      counterclockwise
+    );
     ctx.closePath();
     return ctx;
   },
@@ -752,8 +768,7 @@ const Draw = {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, C_WIDTH / 2, C_HEIGHT / 2);
   }
-}
-
+};
 
 // ### Sound
 //
@@ -773,7 +788,7 @@ const Sound = (function() {
   let mute = false;
 
   let step_counter = 0;
-  let step_freqs = [138.59, 123.47, 110.00, 103.83];
+  let step_freqs = [138.59, 123.47, 110.0, 103.83];
   // step_freqs = [138.59, 164.81, 103.83, 123.47];
 
   let self = {
@@ -793,7 +808,7 @@ const Sound = (function() {
       let freq = step_freqs[step_counter];
       step_counter = (step_counter + 1) % step_freqs.length;
 
-      self.play_note(freq, {type: 'triangle'});
+      self.play_note(freq, { type: 'triangle' });
     },
     play_note: (freq, cfg) => {
       cfg = cfg || {};
@@ -822,7 +837,6 @@ const Sound = (function() {
   };
 
   return self;
-
 })();
 
 // E4 329.63
@@ -830,4 +844,3 @@ const Sound = (function() {
 // Sound.play_note(659.25, {duration: .15, type: 'triangle', vol_adjust: .08})
 // Sound.play_note(69.30, {duration: .2, type: 'sawtooth', vol_adjust: 1}); setTimeout(() => Sound.play_note(98, {duration: .2, type: 'sawtooth', vol_adjust: 1}), 100)
 // Sound.play_note(98, {duration: .3, type: 'sawtooth', vol_adjust: .4}); setTimeout(() => Sound.play_note(69.30, {duration: .3, type: 'sawtooth', vol_adjust: .7}), 200); setTimeout(() => Sound.play_note(49.00, {duration: .5, type: 'sawtooth', vol_adjust: .9}), 400);
-
