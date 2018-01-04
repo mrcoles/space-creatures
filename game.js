@@ -84,11 +84,22 @@ const NUM_ALIEN_COLS = 11;
 const NUM_ALIEN_ROWS = 5;
 
 // this determines how often they move move when the game steps
-const ALIEN_STEP_DELAY = 46;
+const get_alien_step_delay = (num_aliens) => {
+  // stick with 46 for first 10
+  // decrease linearlly from there to 2 (which ends up being like 1/x)
+  return num_aliens > 50
+    ? 46
+    : num_aliens > 45 ? 44 : num_aliens > 40 ? 42 : num_aliens + 1;
+};
+const LASER_STEP_DELAY = 3;
 
 const DIR_RIGHT = 1;
 const DIR_LEFT = -1;
 const DIR_DOWN = 1;
+const DIR_UP = -1;
+
+const HIT_TYPE_TOP = 'hit_top';
+const HIT_TYPE_ALIEN = 'hit_alien';
 
 // ### Game
 
@@ -101,12 +112,17 @@ class Game {
     // level - int - starts at 1
     let state = this.state;
 
-    state.step_count = 0;
+    state.score = 0;
+    state.game_step_count = 0;
+    state.alien_step_count = 0;
     state.level = level;
     state.xdir = DIR_RIGHT;
     state.ydir = 0;
     state.defender_dir = 0;
+    state.laser = null;
+    state.fire_laser = false;
     state.game_over = false;
+    state.game_won = false;
 
     let start_col = parseInt((NUM_COLS - NUM_ALIEN_COLS) / 2);
     let end_col = start_col + NUM_ALIEN_COLS; // exclusive
@@ -132,23 +148,99 @@ class Game {
     this.state.defender_dir = dir;
   }
 
+  set_fire_laser() {
+    if (this.state.laser === null) {
+      this.state.fire_laser = true;
+    }
+  }
+
   step(timestamp, start_time) {
     let state = this.state;
-    state.step_count++;
+    state.game_step_count++;
+    state.alien_step_count++;
 
     let updates = {};
+
+    if (state.fire_laser) {
+      state.laser = new Laser(
+        state.defender.center_x,
+        state.defender.grid_y - 1
+      );
+      state.fire_laser = false;
+      updates.laser_created = true;
+    }
+
+    let hit_alien = false;
+
+    if (state.laser && state.game_step_count % LASER_STEP_DELAY === 0) {
+      let laser_exploded = this._step_laser();
+      if (laser_exploded) {
+        updates.laser_exploded = laser_exploded;
+        if (laser_exploded.type === HIT_TYPE_ALIEN) {
+          state.score += laser_exploded.alien.cfg.score;
+          updates.aliens_hit = true;
+        }
+      }
+    }
 
     if (state.defender_dir !== 0) {
       state.defender.update(state.defender_dir);
       updates.defender = true;
     }
 
-    if (state.step_count % ALIEN_STEP_DELAY === 0) {
+    // alien delay gets faster when fewer exist, so we need to make sure we
+    // adjust the alien_step_count when delay changes to prevent weird jumps
+    let num_aliens = state.aliens.filter((x) => !x.dead).length;
+    let alien_delay = get_alien_step_delay(num_aliens);
+    if (state._last_alien_delay && state._last_alien_delay !== alien_delay) {
+      let steps_till_next = state.alien_step_count % state._last_alien_delay;
+      state.alien_step_count = steps_till_next;
+    }
+    state._last_alien_delay = alien_delay;
+
+    if (num_aliens > 0 && state.alien_step_count % alien_delay === 0) {
       this._step_aliens();
-      updates.aliens = true;
+      updates.aliens_stepped = true;
     }
 
+    state.game_won = num_aliens === 0;
+
     return updates;
+  }
+
+  _step_laser() {
+    let state = this.state;
+
+    state.laser.update(DIR_UP);
+
+    let x = state.laser.grid_x;
+
+    // NOTE: we are checking where y was in the last step, this
+    // is because we haven't rendered this step yet and want to
+    // see if what was shown in the last step should be a collision!
+    //
+    // For the same reason, we want to check this before we step
+    // any of the aliens too!
+    //
+    let y = state.laser.grid_y - DIR_UP;
+
+    // check for hit top
+    if (y <= 0) {
+      state.laser = null;
+      return { x, y, type: HIT_TYPE_TOP };
+    } else {
+      // check for hit aliens
+      let hit_alien = state.aliens
+        .filter((alien) => !alien.dead && alien.contains(x, y))
+        .pop();
+      if (hit_alien) {
+        hit_alien.dead = true;
+        state.laser = null;
+        return { x, y, type: HIT_TYPE_ALIEN, alien: hit_alien };
+      }
+    }
+
+    return false;
   }
 
   _step_aliens() {
@@ -208,20 +300,68 @@ class Game {
     });
 
     let viz = grid.map((row) => `|${row.join('')}|`).join('\n');
-    console.log(`step: ${state.step_count}\n${viz}`);
+    console.log(`step: ${state.alien_step_count}\n${viz}`);
+  }
+}
+
+// ### Grid Element Super Class
+
+class GridElement {
+  constructor(grid_x, grid_y, box_x, box_y, box_width, box_height) {
+    this.grid_x = grid_x;
+    this.grid_y = grid_y;
+    this.box_x = box_x;
+    this.box_y = box_y;
+    this.box_width = box_width;
+    this.box_height = box_height;
+  }
+
+  update(dx, dy) {
+    this.grid_x += dx;
+    this.grid_y += dy;
+  }
+
+  get center_x() {
+    return this.grid_x + this.box_x + this.box_width / 2;
+  }
+
+  get center_y() {
+    return this.grid_y + this.box_y + this.box_height / 2;
+  }
+
+  get bounds() {
+    return {
+      x: this.grid_x + this.box_x,
+      y: this.grid_y + this.box_y,
+      width: this.box_width,
+      height: this.box_height
+    };
+  }
+
+  contains(x, y) {
+    let bounds = this.bounds;
+    return (
+      x >= bounds.x &&
+      x <= bounds.x + bounds.width &&
+      y >= bounds.y &&
+      y <= bounds.y + bounds.height
+    );
   }
 }
 
 // ### Defender
 
-class Defender {
+class Defender extends GridElement {
   constructor(grid_x) {
-    this.grid_x = grid_x || parseInt(NUM_COLS / 2) * COL_WIDTH;
-    this.grid_y = GRID_HEIGHT;
-    this.box_width = COL_WIDTH;
-    this.box_height = ROW_HEIGHT / 2;
-    this.box_x = (COL_WIDTH - this.box_width) / 2;
-    this.box_y = 0;
+    let box_width = COL_WIDTH;
+    super(
+      grid_x || parseInt(NUM_COLS / 2) * COL_WIDTH,
+      GRID_HEIGHT,
+      (COL_WIDTH - box_width) / 2,
+      0,
+      box_width,
+      ROW_HEIGHT / 2
+    );
   }
 
   update(dx) {
@@ -235,6 +375,18 @@ class Defender {
   }
 }
 
+// ### Laser
+
+class Laser extends GridElement {
+  constructor(grid_x, grid_y) {
+    super(grid_x, grid_y, 0, 0, 0, ROW_HEIGHT / 2);
+  }
+
+  update(dy) {
+    this.grid_y += dy;
+  }
+}
+
 // ### Alien Types
 
 const ALIEN_0 = Symbol('alien 0');
@@ -243,43 +395,50 @@ const ALIEN_2 = Symbol('alien 2');
 
 const ALIEN_TYPES = {
   [ALIEN_0]: {
-    narrow_by: 1
+    narrow_by: 1,
+    score: 30
   },
   [ALIEN_1]: {
-    narrow_by: 0.5
+    narrow_by: 0.5,
+    score: 20
   },
   [ALIEN_2]: {
-    narrow_by: 0
+    narrow_by: 0,
+    score: 10
   }
 };
 
 // ### Alien class
 
-class Alien {
+class Alien extends GridElement {
   constructor(alien_row, grid_x, grid_y) {
-    this.alien_row = alien_row;
-    this.grid_x = grid_x;
-    this.grid_y = grid_y;
+    let type = alien_row === 0 ? ALIEN_0 : alien_row <= 2 ? ALIEN_1 : ALIEN_2;
+    let cfg = ALIEN_TYPES[type];
+    let box_width = 5.5 - cfg.narrow_by;
 
-    this.type = alien_row === 0 ? ALIEN_0 : alien_row <= 2 ? ALIEN_1 : ALIEN_2;
-    this.cfg = ALIEN_TYPES[this.type];
+    super(
+      grid_x,
+      grid_y,
+      (COL_WIDTH - box_width) / 2,
+      0,
+      5.5 - cfg.narrow_by,
+      1.1
+    );
+
+    this.alien_row = alien_row;
+    this.type = type;
+    this.cfg = cfg;
     assert(
       this.cfg !== undefined,
       'unabled to find alien type for ${this.type.toString()}'
     );
-
-    this.box_width = 5.5 - this.cfg.narrow_by;
-    this.box_height = 1.1;
-    this.box_x = (COL_WIDTH - this.box_width) / 2;
-    this.box_y = 0;
 
     this.expression = false;
     this.dead = false;
   }
 
   update(dx, dy) {
-    this.grid_x += dx;
-    this.grid_y += dy;
+    super.update(dx, dy);
     this.expression = !this.expression;
   }
 }
@@ -338,8 +497,10 @@ const ALIEN_COLORS = ['#0f0', '#0ff', '#f0f', '#ff0', '#f00'];
 const UI_STATES = {
   started: Symbol('started'),
   exploding: Symbol('exploding'),
-  gameover: Symbol('gameover')
+  game_over: Symbol('game_over')
 };
+
+const EXPLODE_STEPS = 60;
 
 // ### UI Class
 //
@@ -361,14 +522,15 @@ class UI {
       }
     }
 
-    this.state = UI_STATES.gameover;
+    this.state = UI_STATES.game_over;
     this.level = 1;
+    this.paused = false;
   }
 
   // event handlers
 
   on_click(evt) {
-    if (this.state === UI_STATES.gameover) {
+    if (this.state === UI_STATES.game_over) {
       this.start();
     }
   }
@@ -378,7 +540,7 @@ class UI {
 
     switch (evt.keyCode) {
       case 13: // return / enter
-        if (this.state === UI_STATES.gameover) {
+        if (this.state === UI_STATES.game_over) {
           this.start();
         }
         break;
@@ -404,9 +566,16 @@ class UI {
         }
         break;
       case 32: // spacebar
-        // TODO: fill in shooting logic
-        console.log('*pew* *pew*');
+        this.game.set_fire_laser();
         break;
+      case 80: // p
+        this.toggle_pause();
+        break;
+      case 83: // s
+        // HACK - allow stepping through game when paused
+        if (this.paused && this.state !== UI_STATES.game_over) {
+          this.loop();
+        }
       default:
         matched = false;
         break;
@@ -439,92 +608,196 @@ class UI {
 
   start() {
     Draw.clear_all();
-    this.state = UI_STATES.started;
-    let game = new Game();
-    game.init_level(this.level);
 
-    this.game = game;
+    this.state = UI_STATES.started;
+    this.hit_aliens = [];
+    this.paused = false;
+
+    this.game = new Game();
+    this.game.init_level(this.level);
 
     let self = this;
-    let start_time = null;
+    this.start_time = null;
 
-    (function loop() {
-      self._animId = window.requestAnimationFrame((timestamp) => {
-        if (start_time === null) {
-          start_time = timestamp;
-        }
+    this.loop();
+  }
 
-        if (game.state.game_over) {
-          self.state = UI_STATES.exploding;
-          let done = self.render_no_defender(game.state.defender);
-          if (done) {
-            Draw.centered_text(CTX_A, 'Game over!');
-            self.state = UI_STATES.gameover;
-          } else {
-            loop();
-          }
+  loop() {
+    this._animId = window.requestAnimationFrame((timestamp) => {
+      let game = this.game;
+
+      if (this.start_time === null) {
+        this.start_time = timestamp;
+      }
+
+      // game won scenario
+      if (game.state.game_won) {
+        if (this.hit_aliens.length) {
+          this.state = UI_STATES.exploding;
+          Draw.clear(CTX_A);
+          this._render_hit_aliens();
+          this.loop();
         } else {
-          let updates = game.step(timestamp, start_time);
-          if (Sound !== null && updates.aliens) {
-            Sound.step();
-          }
-          self.render(game.state);
-          loop();
+          this.state = UI_STATES.game_over;
+          Draw.centered_text(CTX_A, 'You won!', `Score ${game.state.score}`);
+          Sound.play_win();
         }
-      });
-    })();
+      } else if (game.state.game_over) {
+        // game over scenario
+        if (this.state !== UI_STATES.exploding) {
+          Sound.play_lose();
+        }
+        this.state = UI_STATES.exploding;
+
+        let done = this._render_hit_defender(game.state.defender);
+        if (done) {
+          this.state = UI_STATES.game_over;
+          Draw.centered_text(CTX_A, 'Game over!', `Score ${game.state.score}`);
+        } else {
+          this.loop();
+        }
+      } else {
+        // regular loop scenario
+        let updates = game.step(timestamp, this.start_time);
+
+        // sound effects
+        if (Sound !== null) {
+          if (updates.aliens_stepped) {
+            Sound.step_aliens();
+          }
+          if (updates.laser_created) {
+            Sound.play_laser();
+          }
+          if (updates.aliens_hit) {
+            Sound.play_explosion();
+          } else if (updates.laser_exploded) {
+            Sound.play_dud();
+          }
+        }
+
+        if (
+          updates.laser_exploded &&
+          updates.laser_exploded.type === HIT_TYPE_ALIEN
+        ) {
+          let elt = updates.laser_exploded.alien;
+          this.hit_aliens.push({
+            elt: elt,
+            steps: EXPLODE_STEPS,
+            fill: this._grid_y_to_alien_color(elt.grid_y)
+          });
+        }
+
+        this.render(game.state, this.hit_aliens);
+
+        if (!this.paused) {
+          this.loop();
+        }
+      }
+    });
+  }
+
+  toggle_pause() {
+    this.paused = !this.paused;
+    if (!this.paused && this.state !== UI_STATES.game_over) {
+      // TODO - feels like jenky UI_STATES usage... maybe drop symbols and
+      // have something more config-like, e.g., this.state.is_loopable
+      this.loop();
+    }
   }
 
   // render methods
 
-  render(state) {
+  render(game_state) {
     Draw.clear(CTX_A);
-    // CTX_A.fillStyle = '#555';
+    // CTX_A.fillStyle = '#555'; // for debug...
     // CTX_A.fillRect(C_GRID_X_START, C_GRID_Y_START, C_GRID_WIDTH, C_GRID_HEIGHT);
-    this.render_defender(state.defender);
-    state.aliens.forEach((alien) => this.render_alien(alien));
+    this._render_defender(game_state.defender);
+    this._render_laser(game_state.laser);
+    game_state.aliens.forEach((alien) => this._render_alien(alien));
+    this._render_hit_aliens();
   }
 
-  render_no_defender(defender, ctx) {
+  _render_hit_aliens(ctx) {
+    ctx = ctx || CTX_A;
+
+    this.hit_aliens = this.hit_aliens.filter((hal) => {
+      return this._animate_burst(hal, EXPLODE_STEPS, ctx);
+    });
+  }
+
+  _animate_burst(burst_elt, max_steps, ctx) {
+    // burst_elt - {elt<GridElement>, steps<int>, fill<str>}
+    // max_steps - int - number of steps to start with
+    //
+    let elt = burst_elt.elt;
+    let fill = burst_elt.fill;
+
+    let max_square = 20;
+    let max_distance = 10;
+
+    let { x, y } = this._grid_to_canvas(elt.center_x, elt.center_y);
+
+    let progress = (max_steps - burst_elt.steps) / max_steps;
+    progress = this._fade_out_exp(progress);
+
+    if (progress < 0.8) {
+      let crossw = 7 * progress;
+      ctx.fillStyle = `rgba(255, 255, 255, ${1 - progress})`;
+      Draw.circle(ctx, x, y, crossw).fill();
+    }
+
+    for (let dx = -1; dx <= 1; dx += 2) {
+      for (let dy = -1; dy <= 1; dy += 2) {
+        let x_a = x + progress * max_distance * dx;
+        let y_a = y + progress * max_distance * dy;
+        let width = max_square * (1 - progress);
+
+        ctx.save();
+        ctx.fillStyle = fill;
+        ctx.translate(x_a, y_a);
+        ctx.rotate(Math.PI / 4 * parseInt(progress * 5));
+        ctx.fillRect(-width / 2, -width / 2, width, width);
+        ctx.restore();
+      }
+    }
+
+    burst_elt.steps--;
+    return burst_elt.steps > 0;
+  }
+
+  _render_laser(laser, ctx) {
+    if (!laser) {
+      return;
+    }
+
+    ctx = ctx || CTX_D;
+
+    let { x, y, height } = this._grid_to_canvas(
+      laser.grid_x,
+      laser.grid_y,
+      undefined,
+      laser.box_height
+    );
+
+    let color = ALIEN_COLORS[laser.grid_y % ALIEN_COLORS.length];
+
+    ctx.strokeStyle = color;
+    Draw.shape(ctx, [{ x: x, y: y }, { x: x, y: y + height }]).stroke();
+  }
+
+  _render_hit_defender(defender, ctx) {
     ctx = ctx || CTX_D;
     Draw.clear(ctx);
 
-    const max_counter = 60 * 2;
-
-    if (!this._defender_counter) {
-      this._defender_counter = max_counter;
+    let max_steps = 100;
+    if (!this._burst_defender || !this._burst_defender.steps) {
+      this._burst_defender = { elt: defender, steps: max_steps, fill: '#fff' };
     }
-
-    let { x, y, width, height } = this._grid_to_canvas(
-      defender.grid_x + defender.box_x,
-      defender.grid_y + defender.box_y,
-      defender.box_width,
-      defender.box_height
-    );
-
-    let mid = { x: x + width / 2, y: y + height / 2 };
-    let path = [];
-
-    const rand_color = () =>
-      ALIEN_COLORS[parseInt(Math.random() * ALIEN_COLORS.length)];
-    const rand = () => parseInt(Math.random() * 30) - 15;
-
-    for (let i = 0; i < 10; i++) {
-      ctx.strokeStyle = rand_color();
-      Draw.shape(ctx, [mid, { x: mid.x + rand(), y: mid.y + rand() }]).stroke();
-    }
-
-    this._defender_counter--;
-
-    let complete = (max_counter - this._defender_counter) / max_counter;
-    let comp_w = 40 * complete;
-
-    ctx.clearRect(mid.x - comp_w / 2, mid.y - comp_w / 2, comp_w, comp_w);
-
-    return this._defender_counter <= 0;
+    let going = this._animate_burst(this._burst_defender, max_steps, CTX_D);
+    return !going;
   }
 
-  render_defender(defender, ctx) {
+  _render_defender(defender, ctx) {
     ctx = ctx || CTX_D;
 
     let { x, y, width, height } = this._grid_to_canvas(
@@ -602,7 +875,11 @@ class UI {
     ctx.fill();
   }
 
-  render_alien(alien, ctx) {
+  _render_alien(alien, ctx) {
+    if (alien.dead) {
+      return;
+    }
+
     ctx = ctx || CTX_A;
 
     let { x, y, width, height } = this._grid_to_canvas(
@@ -613,8 +890,7 @@ class UI {
     );
 
     // get color and draw trapezoid
-    let color_steps = GRID_HEIGHT / ALIEN_COLORS.length;
-    let fill = ALIEN_COLORS[parseInt(alien.grid_y / color_steps)];
+    let fill = this._grid_y_to_alien_color(alien.grid_y);
 
     let sw = { x: x, y: y + height };
     let nw = { x: x + width / 6, y: y };
@@ -711,6 +987,23 @@ class UI {
 
   // helpers
 
+  _fade_out_quad(frac) {
+    // frac - float - 0 to 1
+    // quadratic fade-out: y = 1 - (x - 1)^2
+    return 1 - Math.pow(frac - 1, 2);
+  }
+
+  _fade_out_exp(frac) {
+    // frac - float - 0 to 1
+    // exponential fade-out: y = (2 - 2^(1 - 6x)) / 2
+    return (2 - Math.pow(2, 1 - 6 * frac)) / 2;
+  }
+
+  _grid_y_to_alien_color(grid_y) {
+    let color_steps = GRID_HEIGHT / ALIEN_COLORS.length;
+    return ALIEN_COLORS[parseInt(grid_y / color_steps)];
+  }
+
   _grid_to_canvas(x, y, width, height) {
     // converts from the `Game` object's grid coordinates
     // to coordinates on the `UI`'s canvas
@@ -760,13 +1053,23 @@ const Draw = {
     ctx.closePath();
     return ctx;
   },
-  centered_text: (ctx, text) => {
-    ctx.font = 'normal 48px courier new, monospace';
+  centered_text: (ctx, text, sub_text) => {
+    let size = 48;
+    let x = C_WIDTH / 2;
+    let y = C_HEIGHT / 2 - (sub_text ? size / 2 : 0);
+    const font = (s) => `normal ${s}px courier new, monospace`;
+
+    ctx.font = font(size);
     ctx.fillStyle = '#fff';
     ctx.strokeStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, C_WIDTH / 2, C_HEIGHT / 2);
+    ctx.fillText(text, x, y);
+
+    if (sub_text) {
+      ctx.font = font(size * 0.75);
+      ctx.fillText(sub_text, x, y + size);
+    }
   }
 };
 
@@ -804,12 +1107,6 @@ const Sound = (function() {
     toggle_mute: () => {
       mute = !mute;
     },
-    step: () => {
-      let freq = step_freqs[step_counter];
-      step_counter = (step_counter + 1) % step_freqs.length;
-
-      self.play_note(freq, { type: 'triangle' });
-    },
     play_note: (freq, cfg) => {
       cfg = cfg || {};
       var oscillator = audio_ctx.createOscillator();
@@ -833,14 +1130,87 @@ const Sound = (function() {
       oscillator.start(0);
       gain_node.gain.setTargetAtTime(0, current_time + duration - 0.1, 0.015);
       oscillator.stop(current_time + duration);
+    },
+
+    // #### Sound effects
+    //
+
+    step_aliens: () => {
+      let freq = step_freqs[step_counter];
+      step_counter = (step_counter + 1) % step_freqs.length;
+
+      self.play_note(freq, { type: 'triangle' });
+    },
+    play_laser: () => {
+      Sound.play_note(659.25, {
+        duration: 0.15,
+        type: 'triangle',
+        vol_adjust: 0.5
+      });
+    },
+    play_explosion: () => {
+      Sound.play_note(69.3, {
+        duration: 0.15,
+        type: 'sawtooth',
+        vol_adjust: 0.6
+      });
+      setTimeout(
+        () =>
+          Sound.play_note(98, {
+            duration: 0.175,
+            type: 'sawtooth',
+            vol_adjust: 0.6
+          }),
+        100
+      );
+    },
+    play_dud: () => {
+      Sound.play_note(69.3, {
+        duration: 0.15,
+        type: 'sawtooth',
+        vol_adjust: 0.6
+      });
+      // setTimeout(() => Sound.play_note(98, {duration: .175, type: 'sawtooth', vol_adjust: .6}), 100);
+    },
+    play_lose: () => {
+      Sound.play_note(98, { duration: 0.3, type: 'sawtooth', vol_adjust: 0.4 });
+      setTimeout(
+        () =>
+          Sound.play_note(69.3, {
+            duration: 0.3,
+            type: 'sawtooth',
+            vol_adjust: 0.7
+          }),
+        200
+      );
+      setTimeout(
+        () =>
+          Sound.play_note(49.0, {
+            duration: 0.5,
+            type: 'sawtooth',
+            vol_adjust: 0.9
+          }),
+        400
+      );
+    },
+    play_win: () => {
+      // c# 3 - 138.59
+      // g# 3 - 207.65
+      let csharp = [138.59, { duration: 0.2, type: 'sawtooth', vol_adjust: 1 }];
+
+      Sound.play_note.apply(Sound, csharp);
+      setTimeout(() => Sound.play_note.apply(Sound, csharp), 300);
+      setTimeout(
+        () =>
+          Sound.play_note(207.65, {
+            duration: 0.6,
+            type: 'sawtooth',
+            vol_adjust: 1
+          }),
+        425
+      );
     }
   };
 
   return self;
 })();
-
-// E4 329.63
-// E5 659.25
-// Sound.play_note(659.25, {duration: .15, type: 'triangle', vol_adjust: .08})
-// Sound.play_note(69.30, {duration: .2, type: 'sawtooth', vol_adjust: 1}); setTimeout(() => Sound.play_note(98, {duration: .2, type: 'sawtooth', vol_adjust: 1}), 100)
-// Sound.play_note(98, {duration: .3, type: 'sawtooth', vol_adjust: .4}); setTimeout(() => Sound.play_note(69.30, {duration: .3, type: 'sawtooth', vol_adjust: .7}), 200); setTimeout(() => Sound.play_note(49.00, {duration: .5, type: 'sawtooth', vol_adjust: .9}), 400);
