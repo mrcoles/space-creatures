@@ -542,6 +542,7 @@ class Alien extends GridElement {
 // ### UI Constants
 
 const PARENT = document.getElementById('game');
+const INNER = document.getElementById('game-inner');
 const CANVAS_A = document.getElementById('game-aliens');
 const CANVAS_D = document.getElementById('game-defender');
 
@@ -553,9 +554,13 @@ const CTXS = [CTX_A, CTX_D];
 const C_WIDTH = 800;
 const C_HEIGHT = 600;
 
+INNER.style.width = '100%';
+INNER.style.height = '0';
+INNER.style.paddingBottom = `${C_HEIGHT / C_WIDTH * 100}%`;
+
 [PARENT, CANVAS_A, CANVAS_D].forEach((c) => {
-  c.style.width = `${C_WIDTH}px`;
-  c.style.height = `${C_HEIGHT}px`;
+  c.style.width = '100%';
+  c.style.height = '100%';
   c.width = C_WIDTH;
   c.height = C_HEIGHT;
 });
@@ -621,8 +626,14 @@ class UI {
     this.level = 1;
     this.paused = false;
 
+    // key helpers
+    this._do_right_arrow = () =>
+      this.game && this.game.set_defender_dir(DIR_RIGHT);
+    this._do_left_arrow = () =>
+      this.game && this.game.set_defender_dir(DIR_LEFT);
+    this._do_arrow_end = () => this.game && this.game.set_defender_dir(0);
+
     // key events
-    const stop_defender = () => this.game.set_defender_dir(0);
 
     this.key_handlers = [
       {
@@ -639,15 +650,15 @@ class UI {
         code: 37,
         char: 'arrow left',
         info: 'move defender left',
-        on_keydown: () => this.game.set_defender_dir(DIR_LEFT),
-        on_keyup: stop_defender
+        on_keydown: this._do_left_arrow,
+        on_keyup: this._do_arrow_end
       },
       {
         code: 39,
         char: 'arrow right',
         info: 'move defender right',
-        on_keydown: () => this.game.set_defender_dir(DIR_RIGHT),
-        on_keyup: stop_defender
+        on_keydown: this._do_right_arrow,
+        on_keyup: this._do_arrow_end
       },
       {
         code: 32,
@@ -756,10 +767,13 @@ class UI {
     for (let closeElt of document.getElementsByClassName('close')) {
       closeElt.addEventListener('click', _toggle_modal);
     }
+
+    // touch events
+    document.addEventListener('touchstart', this.mob_on_touchstart.bind(this));
+    document.addEventListener('touchend', this.mob_on_touchend.bind(this));
   }
 
   // event handlers
-
   on_click(evt) {
     if (this.state === UI_STATES.game_over) {
       this.start();
@@ -784,6 +798,63 @@ class UI {
       fn();
       evt.preventDefault();
     }
+  }
+
+  mob_on_touchstart(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+
+    const _msg = (txt, clear) => {
+      let elt = document.getElementById('msg');
+      if (clear) {
+        elt.innerText = '';
+      }
+      elt.innerText = elt.innerText + ' ' + txt;
+    };
+
+    if (this._touched_id(evt, 'help') || this._touched_id(evt, 'key-modal')) {
+      this.toggle_key_modal(evt, true);
+    } else if (this.state === UI_STATES.game_over) {
+      if (this._touched_id(evt, 'game')) {
+        this.start();
+      }
+    } else {
+      let touches = evt.touches;
+
+      if (touches.length === 1) {
+        let touch = touches[0];
+        let x = touch.screenX;
+        let y = touch.screenY;
+        let w = window.innerWidth;
+        let h = window.innerHeight;
+        // draw a v shape for left \ fire / right
+
+        // for points: (0, 0), (w/2, h), (w, 0)
+        // is left: y >= (2h/w)x
+        // is right: y >= (-2h/w)x + 2h
+
+        // for points (0, h/2), (w/2, h), (w, h/2)
+        // is left: y >= (h/w)*x + h/2
+        // is right: y >= (-h/w)*x + 3*h/2
+
+        if (y >= h / w * x + h / 2) {
+          // is left
+          this._do_left_arrow();
+        } else if (y >= -h / w * x + 3 * h / 2) {
+          // is right
+          this._do_right_arrow();
+        } else {
+          // is fire
+          this.game.set_fire_laser();
+        }
+      }
+    }
+  }
+
+  mob_on_touchend(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    this._do_arrow_end();
   }
 
   // game loop
@@ -887,15 +958,22 @@ class UI {
     }
   }
 
-  toggle_key_modal(evt) {
-    if (evt && evt.preventDefault) {
-      evt.preventDefault();
-    }
+  toggle_key_modal(evt, is_touch) {
+    // if (evt && evt.preventDefault) {
+    //   evt.preventDefault();
+    // }
     let elt = document.getElementById('key-modal');
     this._displaying_modal = !this._displaying_modal;
+
     if (this._displaying_modal) {
       // show it
-      let text = this._key_modal_as_text('');
+      let cmdElt = document.getElementById('cmd-type');
+      cmdElt.innerText = is_touch
+        ? cmdElt.getAttribute('data-touch')
+        : cmdElt.getAttribute('data-key');
+      let text = is_touch
+        ? this._key_modal_touch_as_text('')
+        : this._key_modal_as_text('');
       elt.getElementsByTagName('p')[0].innerText = text;
       elt.className = 'show';
 
@@ -917,6 +995,16 @@ class UI {
     return this.key_handlers
       .map((x) => `${prefix}${x.char} = ${x.info}`)
       .join('\n');
+  }
+
+  _key_modal_touch_as_text(prefix) {
+    prefix = prefix === undefined ? '*   ' : prefix;
+    let hdlrs = [
+      { char: 'center', info: 'fire laser' },
+      { char: 'bottom left', info: 'move left' },
+      { char: 'bottom right', info: 'move right' }
+    ];
+    return hdlrs.map((x) => `${prefix}${x.char} = ${x.info}`).join('\n');
   }
 
   // render methods
@@ -1286,6 +1374,28 @@ class UI {
       height: height === undefined ? height : height * C_HEIGHT_FACTOR
     };
   }
+
+  _touched_id(evt, id) {
+    return this._find_in_touch_path(evt, (x) => x.id === id);
+  }
+
+  _touched_class(evt, cls) {
+    cls = ' ' + cls + ' ';
+    return this._find_in_touch_path(
+      evt,
+      (x) => (' ' + x.className + ' ').indexOf(cls) > -1
+    );
+  }
+
+  _find_in_touch_path(evt, fn) {
+    let elt = evt.target;
+    while (elt) {
+      if (fn(elt)) {
+        return elt;
+      }
+      elt = elt.parentElement;
+    }
+  }
 }
 
 // ### Draw
@@ -1484,8 +1594,42 @@ const Sound = (function() {
           }),
         425
       );
+    },
+
+    // mobile
+    init_mobile: () => {
+      // this plays one note with our audio_ctx on a touch event, so we
+      // can unlock sounds for the rest of the game!
+      //
+      // via: https://paulbakaus.com/tutorials/html5/web-audio-on-ios/
+      //
+      let did_once = false;
+      document.addEventListener(
+        'touchstart',
+        function() {
+          if (did_once) {
+            return;
+          }
+          did_once = true;
+          // create empty buffer
+          var buffer = audio_ctx.createBuffer(1, 1, 22050);
+          var source = audio_ctx.createBufferSource();
+          source.buffer = buffer;
+
+          // connect to output (your speakers)
+          source.connect(audio_ctx.destination);
+
+          // play the file
+          source.start(0);
+        },
+        false
+      );
     }
   };
+
+  if ('ontouchstart' in document.documentElement) {
+    Sound.init_mobile();
+  }
 
   return self;
 })();
