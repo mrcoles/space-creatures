@@ -92,6 +92,9 @@ const get_alien_step_delay = (num_aliens) => {
     : num_aliens > 45 ? 44 : num_aliens > 40 ? 42 : num_aliens + 1;
 };
 const LASER_STEP_DELAY = 3;
+const BOMB_STEP_DELAY = 5;
+const get_bomb_step_delay = (alien_step_delay) =>
+  Math.max(alien_step_delay, 20);
 
 const DIR_RIGHT = 1;
 const DIR_LEFT = -1;
@@ -140,7 +143,7 @@ class Game {
       alien_row++;
     }
     state.aliens = aliens;
-
+    state.bombs = [];
     state.defender = new Defender();
   }
 
@@ -161,6 +164,7 @@ class Game {
 
     let updates = {};
 
+    // create laser
     if (state.fire_laser) {
       state.laser = new Laser(
         state.defender.center_x,
@@ -170,6 +174,7 @@ class Game {
       updates.laser_created = true;
     }
 
+    // step laser - and check for collisions
     let hit_alien = false;
 
     if (state.laser && state.game_step_count % LASER_STEP_DELAY === 0) {
@@ -183,13 +188,24 @@ class Game {
       }
     }
 
+    // step bombs - and check for collisions
+    if (state.bombs.length && state.game_step_count % BOMB_STEP_DELAY === 0) {
+      let bomb_exploded = this._step_bombs();
+      if (bomb_exploded) {
+        updates.bomb_exploded = bomb_exploded;
+      }
+    }
+
+    // step defender
     if (state.defender_dir !== 0) {
       state.defender.update(state.defender_dir);
       updates.defender = true;
     }
 
-    // alien delay gets faster when fewer exist, so we need to make sure we
-    // adjust the alien_step_count when delay changes to prevent weird jumps
+    // step aliens
+
+    // NOTE: alien delay gets faster when fewer exist, so we need to make sure
+    // we adjust the alien_step_count when delay changes to prevent weird jumps
     let num_aliens = state.aliens.filter((x) => !x.dead).length;
     let alien_delay = get_alien_step_delay(num_aliens);
     if (state._last_alien_delay && state._last_alien_delay !== alien_delay) {
@@ -203,9 +219,68 @@ class Game {
       updates.aliens_stepped = true;
     }
 
+    let bomb_delay = get_bomb_step_delay(alien_delay);
+    if (num_aliens > 0 && state.game_step_count % bomb_delay === 0) {
+      this._step_create_bombs();
+    }
+
     state.game_won = num_aliens === 0;
 
     return updates;
+  }
+
+  _step_create_bombs() {
+    let state = this.state;
+
+    // get front row of aliens for each column
+    let front_row = [];
+    let x_coords = {};
+
+    for (let i = state.aliens.length - 1; i >= 0; i--) {
+      let alien = state.aliens[i];
+      if (!alien.dead && !x_coords[alien.grid_x]) {
+        x_coords[alien.grid_x] = true;
+        front_row.push(alien);
+      }
+    }
+
+    // select one at random
+    let alien = front_row[parseInt(Math.random() * front_row.length)];
+    if (alien) {
+      state.bombs.push(
+        new Bomb(alien.center_x, alien.grid_y + alien.box_height, alien.grid_y)
+      );
+    }
+  }
+
+  _step_bombs() {
+    let state = this.state;
+
+    let exploded = null; // TODO - this is for just defender hits, animate bottom too
+
+    state.bombs = state.bombs.filter((bomb) => {
+      bomb.update(DIR_DOWN);
+
+      let x = bomb.grid_x;
+      let y = bomb.grid_y;
+
+      if (y >= GRID_HEIGHT + ROW_HEIGHT) {
+        // hit bottom
+        return false;
+      } else if (state.defender.contains(x, y)) {
+        // hit defender
+        exploded = bomb;
+        return false;
+      }
+
+      return true;
+    });
+
+    if (exploded) {
+      state.game_over = true;
+    }
+
+    return exploded;
   }
 
   _step_laser() {
@@ -375,11 +450,25 @@ class Defender extends GridElement {
   }
 }
 
-// ### Laser
+// ### Laser - shot by Defender
 
 class Laser extends GridElement {
   constructor(grid_x, grid_y) {
     super(grid_x, grid_y, 0, 0, 0, ROW_HEIGHT / 2);
+  }
+
+  update(dy) {
+    this.grid_y += dy;
+  }
+}
+
+// ### Bomb - dropped by Aliens
+
+class Bomb extends GridElement {
+  constructor(grid_x, grid_y, parent_y) {
+    let height = ROW_HEIGHT / 4;
+    super(grid_x, grid_y + height, 0, 0, 0, height);
+    this.parent_y = parent_y;
   }
 
   update(dy) {
@@ -522,9 +611,151 @@ class UI {
       }
     }
 
+    document.addEventListener(
+      'keydown',
+      this.document_on_keydown.bind(this),
+      false
+    );
+
     this.state = UI_STATES.game_over;
     this.level = 1;
     this.paused = false;
+
+    // key events
+    const stop_defender = () => this.game.set_defender_dir(0);
+
+    this.key_handlers = [
+      {
+        code: 13,
+        char: 'return',
+        info: 'start game',
+        on_keydown: () => {
+          if (this.state === UI_STATES.game_over) {
+            this.start();
+          }
+        }
+      },
+      {
+        code: 37,
+        char: 'arrow left',
+        info: 'move defender left',
+        on_keydown: () => this.game.set_defender_dir(DIR_LEFT),
+        on_keyup: stop_defender
+      },
+      {
+        code: 39,
+        char: 'arrow right',
+        info: 'move defender right',
+        on_keydown: () => this.game.set_defender_dir(DIR_RIGHT),
+        on_keyup: stop_defender
+      },
+      {
+        code: 32,
+        char: 'spacebar',
+        info: 'fire the laser',
+        on_keydown: () => {
+          if (this.state === UI_STATES.game_over) {
+            this.start();
+          } else {
+            this.game.set_fire_laser();
+          }
+        }
+      },
+      {
+        code: 189,
+        char: '-', // minus
+        info: 'volume down',
+        on_keydown: () => {
+          if (Sound) {
+            Sound.volume_down();
+          }
+        }
+      },
+      {
+        code: 187,
+        char: '+', // plus
+        info: 'volume up',
+        on_keydown: () => {
+          if (Sound) {
+            Sound.volume_up();
+          }
+        }
+      },
+      {
+        code: 77,
+        char: 'm',
+        info: 'mute',
+        on_keydown: () => {
+          if (Sound) {
+            Sound.toggle_mute();
+          }
+        }
+      },
+      {
+        code: 80,
+        char: 'p',
+        info: 'pause',
+        on_keydown: () => this.toggle_pause()
+      },
+      {
+        code: 83,
+        char: 's',
+        info: 'step paused game (for debugging)',
+        on_keydown: () => {
+          // HACK - allow stepping through game when paused
+          if (this.paused && this.state !== UI_STATES.game_over) {
+            this.loop();
+          }
+        }
+      },
+      {
+        code: 68,
+        char: 'd',
+        info: 'show hit boxes (for debugging)',
+        on_keydown: () => {
+          // HACK - toggle debug mode
+          window._DEBUG = !window._DEBUG;
+        }
+      },
+      {
+        code: 191,
+        char: '?',
+        info: 'show keyboard commands',
+        on_keydown: () => this.toggle_key_modal(),
+        use_document: true
+      }
+    ];
+
+    // create mapping of key_handlers to apply to events
+    this._doc_keydown_map = {};
+    this._keydown_map = {};
+    this._keyup_map = {};
+
+    this.key_handlers.forEach((kh) => {
+      if (kh.use_document) {
+        if (kh.on_keydown) {
+          this._doc_keydown_map[kh.code] = kh.on_keydown;
+        }
+      } else {
+        if (kh.on_keydown) {
+          this._keydown_map[kh.code] = kh.on_keydown;
+        }
+        if (kh.on_keyup) {
+          this._keyup_map[kh.code] = kh.on_keyup;
+        }
+      }
+    });
+
+    // extra handlers
+    const _toggle_modal = (e) => {
+      e.preventDefault();
+      this.toggle_key_modal();
+    };
+
+    document.getElementById('help').addEventListener('click', _toggle_modal);
+    for (let closeElt of document.getElementsByClassName('close')) {
+      closeElt.addEventListener('click', _toggle_modal);
+    }
   }
 
   // event handlers
@@ -536,70 +767,21 @@ class UI {
   }
 
   on_keydown(evt) {
-    let matched = true;
-
-    switch (evt.keyCode) {
-      case 13: // return / enter
-        if (this.state === UI_STATES.game_over) {
-          this.start();
-        }
-        break;
-      case 37: // arrow left
-        this.game.set_defender_dir(DIR_LEFT);
-        break;
-      case 39: // arrow right;
-        this.game.set_defender_dir(DIR_RIGHT);
-        break;
-      case 189: // minus
-        if (Sound) {
-          Sound.volume_down();
-        }
-        break;
-      case 187: // plus
-        if (Sound) {
-          Sound.volume_up();
-        }
-        break;
-      case 77: // m
-        if (Sound) {
-          Sound.toggle_mute();
-        }
-        break;
-      case 32: // spacebar
-        this.game.set_fire_laser();
-        break;
-      case 80: // p
-        this.toggle_pause();
-        break;
-      case 83: // s
-        // HACK - allow stepping through game when paused
-        if (this.paused && this.state !== UI_STATES.game_over) {
-          this.loop();
-        }
-      default:
-        matched = false;
-        break;
-    }
-
-    if (matched) {
-      evt.preventDefault();
-    }
+    return this._on_keyevent(evt, this._keydown_map);
   }
 
   on_keyup(evt) {
-    let matched = true;
+    return this._on_keyevent(evt, this._keyup_map);
+  }
 
-    switch (evt.keyCode) {
-      case 37: // arrow left - NOTE: this will pass through to next one
-      case 39: // arrow right
-        this.game.set_defender_dir(0);
-        break;
-      default:
-        matched = false;
-        break;
-    }
+  document_on_keydown(evt) {
+    return this._on_keyevent(evt, this._doc_keydown_map);
+  }
 
-    if (matched) {
+  _on_keyevent(evt, keymap) {
+    let fn = keymap[evt.keyCode];
+    if (fn) {
+      fn();
       evt.preventDefault();
     }
   }
@@ -705,6 +887,38 @@ class UI {
     }
   }
 
+  toggle_key_modal(evt) {
+    if (evt && evt.preventDefault) {
+      evt.preventDefault();
+    }
+    let elt = document.getElementById('key-modal');
+    this._displaying_modal = !this._displaying_modal;
+    if (this._displaying_modal) {
+      // show it
+      let text = this._key_modal_as_text('');
+      elt.getElementsByTagName('p')[0].innerText = text;
+      elt.className = 'show';
+
+      if (!this.paused) {
+        this.toggle_pause();
+      }
+    } else {
+      // hide it
+      elt.className = '';
+
+      if (this.paused) {
+        this.toggle_pause();
+      }
+    }
+  }
+
+  _key_modal_as_text(prefix) {
+    prefix = prefix === undefined ? '*   ' : prefix;
+    return this.key_handlers
+      .map((x) => `${prefix}${x.char} = ${x.info}`)
+      .join('\n');
+  }
+
   // render methods
 
   render(game_state) {
@@ -714,6 +928,7 @@ class UI {
     this._render_defender(game_state.defender);
     this._render_laser(game_state.laser);
     game_state.aliens.forEach((alien) => this._render_alien(alien));
+    this._render_bombs(game_state.bombs);
     this._render_hit_aliens();
   }
 
@@ -783,6 +998,41 @@ class UI {
 
     ctx.strokeStyle = color;
     Draw.shape(ctx, [{ x: x, y: y }, { x: x, y: y + height }]).stroke();
+
+    if (window._DEBUG === true) {
+      this._render_debug_dot(x, y, ctx);
+    }
+  }
+
+  _render_bombs(bombs, ctx) {
+    if (!bombs.length) {
+      return;
+    }
+
+    bombs.forEach((bomb) => {
+      let { x, y, height } = this._grid_to_canvas(
+        bomb.grid_x,
+        bomb.grid_y,
+        undefined,
+        bomb.box_height
+      );
+
+      ctx = ctx || CTX_D;
+
+      // HACK - assign a color
+      if (!bomb._fill) {
+        bomb._fill = this._grid_y_to_alien_color(bomb.parent_y);
+      }
+
+      ctx.strokeStyle = bomb._fill;
+      Draw.shape(ctx, [{ x: x, y: y }, { x: x, y: y - height }]).stroke();
+      ctx.fillStyle = '#fff';
+      Draw.circle(ctx, x, y, 1.5).fill();
+
+      if (window._DEBUG === true) {
+        this._render_debug_dot(x, y, ctx);
+      }
+    });
   }
 
   _render_hit_defender(defender, ctx) {
@@ -873,6 +1123,11 @@ class UI {
     ctx.closePath();
 
     ctx.fill();
+
+    // debug box
+    if (window._DEBUG === true) {
+      this._render_debug_box(defender, ctx);
+    }
   }
 
   _render_alien(alien, ctx) {
@@ -983,6 +1238,23 @@ class UI {
         true
       ).fill();
     }
+
+    // debug box
+    if (window._DEBUG === true) {
+      this._render_debug_box(alien, ctx);
+    }
+  }
+
+  _render_debug_box(elt, ctx) {
+    let b = elt.bounds;
+    b = this._grid_to_canvas(b.x, b.y, b.width, b.height);
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(b.x, b.y, b.width, b.height);
+  }
+
+  _render_debug_dot(x, y, ctx) {
+    ctx.fillStyle = '#fff';
+    Draw.circle(ctx, x, y, 2).fill();
   }
 
   // helpers
@@ -1100,6 +1372,9 @@ const Sound = (function() {
     },
     volume_up: () => {
       volume_percent = Math.min(volume_percent + 10, 100);
+      if (mute) {
+        mute = false;
+      }
     },
     volume_down: () => {
       volume_percent = Math.max(volume_percent - 10, 0);

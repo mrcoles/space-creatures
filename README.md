@@ -11,9 +11,13 @@ Requires an es6 compliant web browser.
 Controls:
 
 *   return = start game (or click screen to start)
-*   left arrow = move defender left
-*   right arrow = move defender right
-*   spacebar = attack (TODO)
-*   + = volume up
+*   arrow left = move defender left
+*   arrow right = move defender right
+*   spacebar = fire the laser
 *   - = volume down
+*   + = volume up
 *   m = mute
+*   p = pause
+*   s = step paused game (for debugging)
+*   d = show hit boxes (for debugging)
+*   ? = show keyboard commands

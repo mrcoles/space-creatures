@@ -12,13 +12,23 @@
        color: #fff;
      }
      #content {
+       position: relative;
        max-width: 820px;
        padding: 0 15px;
        margin: 30px auto;
      }
-     h1 {
+     h1, h2 {
        margin: 0 0 1em;
        text-align: center;
+     }
+     a {
+       color: #999;
+       color: rgba(255, 255, 255, .65);
+       text-decoration: none;
+     }
+     a:hover {
+       color: #fff;
+       color: rgba(255, 255, 255, .85);
      }
      #game {
        position: relative;
@@ -36,6 +46,52 @@
        top: 0;
        left: 0;
      }
+     #key-modal {
+       display: none;
+       position: absolute;
+       box-sizing: border-box;
+
+       top: 100px;
+       left: 50%;
+       width: 460px;
+       margin-left: -230px;
+       padding: 20px;
+
+       background: #000;
+       background: rgba(0, 0, 0, .85);
+       border: 10px solid rgba(255, 255, 255, .75);
+       border-radius: 10px;
+     }
+     #key-modal.show {
+       display: block;
+     }
+     #key-modal p {
+       white-space: pre;
+     }
+     a#help {
+       position: absolute;
+       bottom: 10px;
+       right: 10px;
+       font-size: 24px;
+       line-height: 24px;
+       width: 24px;
+       font-weight: bold;
+       text-align: center;
+     }
+     .sr-only {
+       position: absolute;
+       width: 1px;
+       height: 1px;
+       overflow: hidden;
+       text-indent: 110%;
+     }
+     .close {
+       position: absolute;
+       top: 10px;
+       right: 10px;
+       font-size: 16px;
+       line-height: 16px;
+     }
     </style>
   </head>
   <body>
@@ -46,7 +102,15 @@
         <canvas id="game-aliens"></canvas>
         <canvas id="game-defender"></canvas>
       </div>
+      <div id="key-modal">
+        <h2>Keyboard commands</h2>
+        <p>
+          
+        </p>
+        <a class="close" href="#" onclick="return false"><span class="sr-only">close</span>X</a>
+      </div>
     </div>
+    <a id="help" href="#" oncick="return false"><span class="sr-only">help</span>?</a>
     <script src="game.js"></script>
     <script>
      var ui = new UI();
