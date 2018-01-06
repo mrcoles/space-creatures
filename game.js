@@ -801,16 +801,12 @@ class UI {
   }
 
   mob_on_touchstart(evt) {
+    if (this._touched_class(evt, 'link')) {
+      return;
+    }
+
     evt.stopPropagation();
     evt.preventDefault();
-
-    const _msg = (txt, clear) => {
-      let elt = document.getElementById('msg');
-      if (clear) {
-        elt.innerText = '';
-      }
-      elt.innerText = elt.innerText + ' ' + txt;
-    };
 
     if (this._touched_id(evt, 'help') || this._touched_id(evt, 'key-modal')) {
       this.toggle_key_modal(evt, true);
@@ -852,6 +848,9 @@ class UI {
   }
 
   mob_on_touchend(evt) {
+    if (this._touched_class(evt, 'link')) {
+      return;
+    }
     evt.stopPropagation();
     evt.preventDefault();
     this._do_arrow_end();
@@ -974,7 +973,7 @@ class UI {
       let text = is_touch
         ? this._key_modal_touch_as_text('')
         : this._key_modal_as_text('');
-      elt.getElementsByTagName('p')[0].innerText = text;
+      elt.getElementsByClassName('controls')[0].innerText = text;
       elt.className = 'show';
 
       if (!this.paused) {

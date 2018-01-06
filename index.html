@@ -76,6 +76,9 @@
      #key-modal p {
        white-space: pre-wrap;
      }
+     #key-modal p a {
+       text-decoration: underline;
+     }
      a#help {
        position: absolute;
        bottom: 10px;
@@ -110,6 +113,7 @@
          border-radius: 5px;
          border-color: rgba(255, 255, 255, .65);
        }
+       #key-modal { background: #000; }
        a#help {
          bottom: auto;
          top: 0;
@@ -152,8 +156,10 @@
       </div>
       <div id="key-modal">
         <h2><span id="cmd-type" data-touch="Touch" data-key="Keyboard">Keyboard</span> commands</h2>
-        <p>
+        <p class="controls"></p>
+        <p><br />View the <a class="link" href="https://github.com/mrcoles/space-creatures">source code on Github</a>
 
+Created by <a class="link" href="https://mrcoles.com">Peter Coles</a>
         </p>
         <a class="close" href="#" onclick="return false"><span class="sr-only">close</span>X</a>
       </div>
