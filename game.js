@@ -819,8 +819,8 @@ class UI {
 
       if (touches.length === 1) {
         let touch = touches[0];
-        let x = touch.screenX;
-        let y = touch.screenY;
+        let x = touch.pageX;
+        let y = touch.pageY;
         let w = window.innerWidth;
         let h = window.innerHeight;
         // draw a v shape for left \ fire / right
