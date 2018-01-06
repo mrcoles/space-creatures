@@ -1628,7 +1628,7 @@ const Sound = (function() {
   };
 
   if ('ontouchstart' in document.documentElement) {
-    Sound.init_mobile();
+    self.init_mobile();
   }
 
   return self;
