@@ -549,7 +549,7 @@ const CANVAS_D = document.getElementById('game-defender');
 const CTX_A = CANVAS_A.getContext('2d');
 const CTX_D = CANVAS_D.getContext('2d');
 
-const CTXS = [CTX_A, CTX_D];
+const CTXS = [CTX_D, CTX_A];
 
 const C_WIDTH = 800;
 const C_HEIGHT = 600;
